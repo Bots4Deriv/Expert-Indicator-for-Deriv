@@ -1,9 +1,1 @@
-GitHub
-   ↓
-Railway
-   ↓
-Install requirements.txt
-   ↓
-Run main.py
-   ↓
-Open dashboard
+web: uvicorn main:app --host 0.0.0.0 --port $PORT
