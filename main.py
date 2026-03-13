@@ -18,7 +18,7 @@ import uvicorn
 
 APP_ID = os.getenv("APP_ID", "1089")
 DERIV_TOKEN = os.getenv("DERIV_TOKEN", "")
-SYMBOL = os.getenv("SYMBOL", "R_25")
+SYMBOL = os.getenv("SYMBOL", "R_10")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 CHAT_ID = os.getenv("CHAT_ID", "")
 CANDLE_TIME = int(os.getenv("CANDLE_TIME", "60"))
