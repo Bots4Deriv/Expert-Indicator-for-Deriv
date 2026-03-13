@@ -10,10 +10,9 @@ from collections import deque
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 import threading
-import uvicorn
 
 # =====================
-# CONFIG (Use environment variables for secrets!)
+# CONFIG
 # =====================
 
 APP_ID = os.getenv("APP_ID", "1089")
@@ -36,7 +35,7 @@ candles = deque(maxlen=200)
 zones = []
 signals = []
 last_signal = "Waiting..."
-lock = threading.Lock()  # Thread safety for shared data
+lock = threading.Lock()
 
 # =====================
 # TELEGRAM ALERT
@@ -62,7 +61,7 @@ app = FastAPI(title="Deriv Signal Engine")
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard():
-    with lock:  # Thread-safe access
+    with lock:
         zone_html = "".join([
             f"<li>{z['type']} | {z['price']:.2f} | grade {z['grade']} | touches {z['touch']}</li>"
             for z in list(zones)[-10:]
@@ -119,7 +118,7 @@ def health_check():
     return {"status": "running", "symbol": SYMBOL, "signals": len(signals), "zones": len(zones)}
 
 # =====================
-# TRADING LOGIC (Thread-safe)
+# TRADING LOGIC
 # =====================
 
 def momentum():
@@ -212,7 +211,6 @@ def build_candle():
     
     print(f"📈 CANDLE: O:{candle['open']:.2f} H:{candle['high']:.2f} L:{candle['low']:.2f} C:{candle['close']:.2f}")
     
-    # Calculate pivots on a copy to avoid lock issues
     candle_list = list(candles)
     ph = pivot_high(candle_list)
     pl = pivot_low(candle_list)
@@ -225,7 +223,7 @@ def build_candle():
     return candle
 
 # =====================
-# DERIV WEBSOCKET STREAM
+# DERIV WEBSOCKET
 # =====================
 
 async def stream():
@@ -239,7 +237,6 @@ async def stream():
         try:
             print(f"🔌 Connecting to Deriv (App ID: {APP_ID})...")
             async with websockets.connect(url, ping_interval=30, ping_timeout=10) as ws:
-                # Authorize
                 await ws.send(json.dumps({"authorize": DERIV_TOKEN}))
                 auth_response = await ws.recv()
                 auth_data = json.loads(auth_response)
@@ -252,7 +249,6 @@ async def stream():
                 print("✅ Connected to Deriv")
                 send_telegram("🤖 Deriv Signal Engine started and connected!")
                 
-                # Subscribe to ticks
                 await ws.send(json.dumps({
                     "ticks": SYMBOL,
                     "subscribe": 1
@@ -276,7 +272,6 @@ async def stream():
                             
                             check_touch(price)
                             
-                            # Build candle every CANDLE_TIME seconds
                             current_time = time.time()
                             if current_time - last_candle_time >= CANDLE_TIME:
                                 build_candle()
@@ -304,15 +299,13 @@ async def stream():
         reconnect_delay = min(reconnect_delay * 2, max_reconnect_delay)
 
 # =====================
-# MAIN EXECUTION
+# STARTUP (Modified for Railway)
 # =====================
 
 def run_stream():
-    """Run the websocket stream in a separate thread"""
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
-    # Handle signals gracefully
     def signal_handler(sig, frame):
         print("\n🛑 Shutting down stream...")
         loop.stop()
@@ -326,19 +319,9 @@ def run_stream():
     except Exception as e:
         print(f"Stream thread error: {e}")
 
-if __name__ == "__main__":
-    print("🚀 Starting Deriv Signal Engine...")
-    print(f"📊 Symbol: {SYMBOL} | Candle Time: {CANDLE_TIME}s | Zone Range: {ZONE_RANGE}")
-    
-    # Start websocket stream in background thread
-    stream_thread = threading.Thread(target=run_stream, daemon=True)
-    stream_thread.start()
-    
-    # Get port from environment (for cloud deployment)
-    port = int(os.getenv("PORT", "8000"))
-    host = os.getenv("HOST", "0.0.0.0")
-    
-    print(f"🌐 Starting web server on {host}:{port}")
-    
-    # Start FastAPI server (this blocks)
-    uvicorn.run(app, host=host, port=port, log_level="info")
+# CRITICAL: Start stream in background thread when module loads
+# This runs BEFORE Railway's uvicorn starts
+print("🚀 Initializing Deriv Signal Engine...")
+stream_thread = threading.Thread(target=run_stream, daemon=True)
+stream_thread.start()
+print("📡 WebSocket stream started in background thread")
